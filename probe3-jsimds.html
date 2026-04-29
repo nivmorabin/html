@@ -3,17 +3,43 @@
 <head><title>baseline</title></head>
 <body>
 <div id="js-marker">NO_JS</div>
+<div id="public-fetch">PUBLIC_NO_PROBE</div>
 <div id="imds-result">NO_PROBE</div>
 <script>
   // Sentinel #1: prove JS executed at all.
   document.title = 'JS_RAN';
   document.getElementById('js-marker').textContent = 'JS_RAN_DOM';
 
-  // Sentinel #2: prove (or disprove) that in-page JS can reach link-local IMDS.
-  // Headless Chromium with default settings normally cannot reach 169.254.169.254
-  // from a web origin (browser SOP / mixed-content / loopback rules), but
-  // agent-browser tools sometimes loosen these for automation.
-  fetch('http://169.254.169.254/latest/meta-data/iam/security-credentials/', { cache: 'no-store' })
+  // Hard 2s deadline on both fetches via a shared AbortController.
+  // Without this, an LNA-blocked fetch can hang indefinitely (Chromium
+  // doesn't fast-fail it), preventing the harness browser tool's
+  // navigation from reaching networkidle and causing it to time out
+  // before the LLM can read the DOM.
+  const ctrl = new AbortController();
+  setTimeout(() => ctrl.abort(new DOMException('TIMEOUT_2S', 'AbortError')), 2000);
+
+  // Control fetch: public origin -> public origin. Should succeed in
+  // any working Chromium, isolating any IMDS failure to *Local Network
+  // Access* (LNA), not general network/JS issues.
+  fetch('https://httpbin.org/get', { cache: 'no-store', signal: ctrl.signal })
+    .then(r => r.json())
+    .then(j => { document.getElementById('public-fetch').textContent = 'PUBLIC_OK:' + (j.url || ''); })
+    .catch(e => { document.getElementById('public-fetch').textContent = 'PUBLIC_ERR:' + e.toString(); });
+
+  // Probe fetch: public origin -> link-local IMDS at 169.254.169.254.
+  // Expected to be blocked by Chromium's Local Network Access policy:
+  //   1. The page's origin is public (https://nivmorabin.github.io)
+  //   2. The target is a private/link-local IP
+  //   3. There is no user to grant the LNA permission prompt in the
+  //      headless AgentCore Chromium fleet
+  //   4. IMDS doesn't return Access-Control-Allow-Private-Network
+  // Any of (3) and (4) is sufficient to deny the request without user.
+  // The expected outcome is therefore IMDS_ERR with a TypeError or an
+  // LNA-specific message — NOT a hang and NOT IMDS_OK.
+  fetch('http://169.254.169.254/latest/meta-data/iam/security-credentials/', {
+    cache: 'no-store',
+    signal: ctrl.signal,
+  })
     .then(r => r.text())
     .then(t => { document.getElementById('imds-result').textContent = 'IMDS_OK:' + t; })
     .catch(e => { document.getElementById('imds-result').textContent = 'IMDS_ERR:' + e.toString(); });
