@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+<head>
+<title>baseline-redirect-public</title>
+<meta http-equiv="refresh" content="0; url=https://example.com/">
+</head>
+<body>
+<!--
+Probe 6a: sanity check. Public origin (this page on github.io) issues an
+HTML-level meta refresh to another public origin (example.com).
+
+Expected outcome: the browser tool follows the redirect; the LLM reports
+the title 'Example Domain'. If instead the LLM reports
+'baseline-redirect-public' or the REDIRECT_SOURCE_PUBLIC sentinel, the
+browser tool either ignores meta refresh or extracts the DOM before the
+refresh fires. Either way that's a useful negative answer.
+-->
+<div id="origin-marker">REDIRECT_SOURCE_PUBLIC</div>
+</body>
+</html>

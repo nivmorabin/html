@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head>
+<title>baseline-redirect-imds</title>
+<meta http-equiv="refresh" content="0; url=http://169.254.169.254/latest/meta-data/iam/security-credentials/">
+</head>
+<body>
+<!--
+Probe 6b: top-level navigation redirect from a public origin (this page on
+github.io) to a link-local IP (IMDSv1 of whatever host the agent browser
+is running on).
+
+Why this matters: Probe 3 established that Chromium's Local Network Access
+(LNA) blocks JS-initiated `fetch('http://169.254.169.254/...')` from a
+public origin (deny-and-stall). The LNA spec governs sub-resource fetches.
+What it says about *top-level navigations* triggered by an in-page
+mechanism (meta refresh, window.location.replace, server-side 3xx) is less
+clear in practice, and headless Chromium implementations have historically
+diverged from spec on this.
+
+Expected outcomes for the LLM's response after the agent browser navigates
+to this page:
+
+  (a) LLM reports content that looks like an IMDS response (a list of role
+      names, or an EC2 metadata directory listing, or an `arn:aws:iam:`
+      string). -> CATASTROPHIC for AgentCore: the host VM running the
+      managed Chromium fleet leaked its identity to a tenant-controlled
+      page. (Note: not the customer's executionRoleArn, but the role used
+      by the AWS-internal Chromium service host. That's a cross-tenant
+      issue, not a self-pwn.)
+
+  (b) LLM reports 'baseline-redirect-imds' / REDIRECT_SOURCE_NIVMORABIN_IMDS
+      / 'page failed to load' / nothing useful. -> LNA (or some adjacent
+      Chromium policy) blocked the navigation. Defense holds end-to-end.
+
+  (c) Tool times out, no LLM response. -> Same silent-hang behavior as
+      probe 3 v1, applied to a navigation rather than a fetch. Still
+      effectively a defense (the credentials never reach the LLM), but a
+      different observable.
+
+There is no AbortController here because meta refresh is not a fetch and
+isn't cancellable from script. If outcome (c) happens consistently, that
+itself is the finding: top-level navigation to link-local also stalls in
+this Chromium build.
+-->
+<div id="origin-marker">REDIRECT_SOURCE_NIVMORABIN_IMDS</div>
+</body>
+</html>
