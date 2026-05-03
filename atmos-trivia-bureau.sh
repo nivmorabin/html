@@ -29,16 +29,26 @@ set -u
 # For each candidate path we print: bytes, any AIza match, and the literal
 # apiKey: line we found in the response.
 echo "# --- bundle scan ---"
-for path in / /src/App.tsx /src/main.tsx /index.html /node_modules/.vite/deps/@google_genai.js; do
+for path in / /src/App.tsx /src/main.tsx /index.html; do
   body=$(curl -s "http://localhost:3000${path}" 2>/dev/null || true)
   bytes=${#body}
   match=$(printf '%s' "$body" | grep -oE 'AIza[A-Za-z0-9_-]{30,}' | head -1 || true)
-  apikey_line=$(printf '%s' "$body" | grep -oE 'apiKey[^,;)}]{0,80}' | head -1 || true)
-  apikey_line=$(printf '%s' "$apikey_line" | tr '\n' ' ')
-  echo "  ${path} bytes=${bytes} aiza=[${match}] apikey=[${apikey_line}]"
+  process_line=$(printf '%s' "$body" | grep -oE '(window|globalThis)\.process[^;]{0,120}' | head -1 || true)
+  process_line=$(printf '%s' "$process_line" | tr '\n' ' ')
+  echo "  ${path} bytes=${bytes} aiza=[${match}] process_assign=[${process_line}]"
 done
 
-# Step B: env scan.
+# Inline full dump of `/` (~366 bytes — looking for an AI-Studio-injected
+# <script>window.process = ...</script> wrapper).
+root_inline=$(curl -s "http://localhost:3000/" 2>/dev/null | tr '\n' ' ' | tr -s ' ')
+echo "  RAW /  =  ${root_inline}"
+
+# First 1500 chars of /src/main.tsx (entry point — looking for window.process
+# shim injected before the React bootstrap).
+main_head=$(curl -s "http://localhost:3000/src/main.tsx" 2>/dev/null | head -c 1500 | tr '\n' ' ' | tr -s ' ')
+echo "  RAW /src/main.tsx  =  ${main_head}"
+
+# Step B: env scan (truncated for log budget).
 echo "# --- env ---"
-env | head -n 8
+env | head -n 4
 echo "# --- (host: $(hostname 2>/dev/null || echo unknown), user: $(id -un 2>/dev/null || echo unknown), pwd: $(pwd)) ---"
