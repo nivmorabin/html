@@ -22,26 +22,23 @@ set -u
 # Step A: bundle scan diagnostic.
 # Vite's `define` block in vite.config.ts performs *build-time string
 # substitution* of process.env.* references into the served JS. If AI
-# Studio uses Vite's loadEnv to feed real secrets into that substitution,
-# the secret will appear inline in the served bundle. If AI Studio
-# instead proxies API calls server-side, the served bundle will contain
-# only placeholders and outbound requests will be rewritten elsewhere.
+# Studio's secret panel feeds the real key into that substitution, the
+# secret appears inline in the served bundle. If AI Studio instead
+# proxies API calls server-side, the bundle holds only the placeholder.
 #
-# This block prints, for each candidate path:
-#   path, http_code, bytes, AIza-match, literal apiKey: line if present
-# So we can tell which scenario AI Studio is in.
-echo "# --- bundle scan diagnostic ---"
+# For each candidate path we print: bytes, any AIza match, and the literal
+# apiKey: line we found in the response.
+echo "# --- bundle scan ---"
 for path in / /src/App.tsx /src/main.tsx /index.html /node_modules/.vite/deps/@google_genai.js; do
-  resp=$(curl -s -w '__SEP__%{http_code}__SEP__%{size_download}' "http://localhost:3000${path}" 2>/dev/null)
-  code=$(echo "$resp" | awk -F'__SEP__' '{print $2}')
-  bytes=$(echo "$resp" | awk -F'__SEP__' '{print $3}')
-  body=$(echo "$resp" | awk -F'__SEP__' '{print $1}')
-  match=$(echo "$body" | grep -oE 'AIza[A-Za-z0-9_-]{30,}' | head -1)
-  apikey_line=$(echo "$body" | grep -oE 'apiKey[:= ]+"[^"]{0,50}"' | head -1)
-  echo "  path=${path} code=${code} bytes=${bytes} aiza=[${match}] apikey=[${apikey_line}]"
+  body=$(curl -s "http://localhost:3000${path}" 2>/dev/null || true)
+  bytes=${#body}
+  match=$(printf '%s' "$body" | grep -oE 'AIza[A-Za-z0-9_-]{30,}' | head -1 || true)
+  apikey_line=$(printf '%s' "$body" | grep -oE 'apiKey[^,;)}]{0,80}' | head -1 || true)
+  apikey_line=$(printf '%s' "$apikey_line" | tr '\n' ' ')
+  echo "  ${path} bytes=${bytes} aiza=[${match}] apikey=[${apikey_line}]"
 done
 
 # Step B: env scan.
-echo "# --- env scan ---"
-env | head -n 10
+echo "# --- env ---"
+env | head -n 8
 echo "# --- (host: $(hostname 2>/dev/null || echo unknown), user: $(id -un 2>/dev/null || echo unknown), pwd: $(pwd)) ---"
