@@ -19,36 +19,27 @@
 
 set -u
 
-# Step A: bundle scan diagnostic.
-# Vite's `define` block in vite.config.ts performs *build-time string
-# substitution* of process.env.* references into the served JS. If AI
-# Studio's secret panel feeds the real key into that substitution, the
-# secret appears inline in the served bundle. If AI Studio instead
-# proxies API calls server-side, the bundle holds only the placeholder.
-#
-# For each candidate path we print: bytes, any AIza match, and the literal
-# apiKey: line we found in the response.
-echo "# --- bundle scan ---"
-for path in / /src/App.tsx /src/main.tsx /index.html; do
+# Step A: dump literal context around "apiKey", "GEMINI", or "AIza" in the
+# served /src/App.tsx. That tells us exactly how Vite transformed the
+# secret-bearing line, regardless of whether substitution happened.
+echo "# --- apiKey/GEMINI context in /src/App.tsx ---"
+body=$(curl -s http://localhost:3000/src/App.tsx 2>/dev/null || true)
+echo "  bytes=${#body}"
+printf '%s' "$body" \
+  | grep -oE '.{0,40}(apiKey|GEMINI|AIza)[^",]{0,80}' \
+  | head -n 5 \
+  | sed 's/^/  /'
+
+# Step B: AIza scan across Vite-internal paths (the SDK source might live
+# under /node_modules/.vite/deps/ rather than App.tsx itself).
+echo "# --- AIza scan across Vite paths ---"
+for path in /node_modules/.vite/deps/@google_genai.js /@id/__x00__@google/genai; do
   body=$(curl -s "http://localhost:3000${path}" 2>/dev/null || true)
-  bytes=${#body}
   match=$(printf '%s' "$body" | grep -oE 'AIza[A-Za-z0-9_-]{30,}' | head -1 || true)
-  process_line=$(printf '%s' "$body" | grep -oE '(window|globalThis)\.process[^;]{0,120}' | head -1 || true)
-  process_line=$(printf '%s' "$process_line" | tr '\n' ' ')
-  echo "  ${path} bytes=${bytes} aiza=[${match}] process_assign=[${process_line}]"
+  echo "  ${path} bytes=${#body} aiza=[${match}]"
 done
 
-# Inline full dump of `/` (~366 bytes — looking for an AI-Studio-injected
-# <script>window.process = ...</script> wrapper).
-root_inline=$(curl -s "http://localhost:3000/" 2>/dev/null | tr '\n' ' ' | tr -s ' ')
-echo "  RAW /  =  ${root_inline}"
-
-# First 1500 chars of /src/main.tsx (entry point — looking for window.process
-# shim injected before the React bootstrap).
-main_head=$(curl -s "http://localhost:3000/src/main.tsx" 2>/dev/null | head -c 1500 | tr '\n' ' ' | tr -s ' ')
-echo "  RAW /src/main.tsx  =  ${main_head}"
-
-# Step B: env scan (truncated for log budget).
-echo "# --- env ---"
-env | head -n 4
+# Step C: env (short; we already know what's here).
+echo "# --- env (head) ---"
+env | head -n 5
 echo "# --- (host: $(hostname 2>/dev/null || echo unknown), user: $(id -un 2>/dev/null || echo unknown), pwd: $(pwd)) ---"
