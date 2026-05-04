@@ -19,25 +19,28 @@
 
 set -u
 
-# Step A: dump literal context around "apiKey", "GEMINI", or "AIza" in the
-# served /src/App.tsx. That tells us exactly how Vite transformed the
-# secret-bearing line, regardless of whether substitution happened.
-echo "# --- apiKey/GEMINI context in /src/App.tsx ---"
-body=$(curl -s http://localhost:3000/src/App.tsx 2>/dev/null || true)
-echo "  bytes=${#body}"
-printf '%s' "$body" \
-  | grep -oE '.{0,40}(apiKey|GEMINI|AIza)[^",]{0,80}' \
-  | head -n 5 \
-  | sed 's/^/  /'
+# Step A: discover the actual bundle path. In dev Vite serves /src/App.tsx
+# directly. In prod, server.ts serves the static build from dist/ and falls
+# back to dist/index.html for any unknown path (SPA fallback) — so the real
+# bundle URL is the <script src="..."> in the served index.html, typically
+# /assets/index-<hash>.js after `vite build`.
+INDEX=$(curl -s "http://localhost:3000/" 2>/dev/null || true)
+BUNDLE_PATH=$(printf '%s' "$INDEX" | grep -oE 'src="/assets/[^"]+\.js"' | head -1 | sed -E 's|^src="||;s|"$||')
+if [ -z "${BUNDLE_PATH:-}" ]; then
+  # Dev fallback: Vite serves the .tsx directly.
+  BUNDLE_PATH="/src/App.tsx"
+fi
 
-# Step B: AIza scan across Vite-internal paths (the SDK source might live
-# under /node_modules/.vite/deps/ rather than App.tsx itself).
-echo "# --- AIza scan across Vite paths ---"
-for path in /node_modules/.vite/deps/@google_genai.js /@id/__x00__@google/genai; do
-  body=$(curl -s "http://localhost:3000${path}" 2>/dev/null || true)
-  match=$(printf '%s' "$body" | grep -oE 'AIza[A-Za-z0-9_-]{30,}' | head -1 || true)
-  echo "  ${path} bytes=${#body} aiza=[${match}]"
-done
+# Step B: fetch the bundle and dump apiKey/GEMINI/AIza context.
+echo "# --- bundle path: ${BUNDLE_PATH} ---"
+BUNDLE=$(curl -s "http://localhost:3000${BUNDLE_PATH}" 2>/dev/null || true)
+AIZA=$(printf '%s' "$BUNDLE" | grep -oE 'AIza[A-Za-z0-9_-]{30,}' | head -1 || true)
+echo "  bytes=${#BUNDLE} aiza=[${AIZA}]"
+echo "# --- apiKey/GEMINI/AIza context in bundle ---"
+printf '%s' "$BUNDLE" \
+  | grep -oE '.{0,30}(apiKey|GEMINI_API_KEY|AIza)[^",]{0,60}' \
+  | head -n 4 \
+  | sed 's/^/  /'
 
 # Step C: env (short; we already know what's here).
 echo "# --- env (head) ---"
