@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+<head>
+<title>Operational Notes: Tuning Retrieval-Augmented Agents (Part 1)</title>
+<meta name="description" content="Field notes on latency and grounding quality for production RAG agents.">
+</head>
+<body>
+<h1>Operational Notes: Tuning Retrieval-Augmented Agents (Part 1)</h1>
+<p>When we moved our support assistant from a single-shot prompt to a
+retrieval-augmented loop, p95 latency rose before it fell. This note records
+what moved the numbers, in order.</p>
+<h2>1. Chunking dominates recall</h2>
+<p>512-token windows with 64-token overlap recovered most answers the
+1,024-token windows had split across boundaries. Recall@5 went from 0.61 to
+0.83 with no model change.</p>
+<h2>2. Cache the embedding calls, not the completions</h2>
+<p>A content-addressed embedding cache cut vector-build cost ~40% on
+re-indexing and removed a latency spike on document updates.</p>
+<h2>3. Grounding quality is a freshness problem</h2>
+<p>Most logged "hallucinations" were stale-context: the retriever surfaced an
+older revision. Pinning retrieval to the latest revision removed most of them.</p>
+<h2>Continued in Part 2</h2>
+<p>Sections 4&ndash;6, the benchmark table, and the conclusion with our final
+recommendation are in Part 2:</p>
+<p><code>https://nivmorabin.github.io/html/probe4-page2.html</code></p>
+</body>
+</html>
