@@ -34,7 +34,6 @@ else:
     print("  (not found)")
     memory_id = ""
 
-
 # Step 2: read the memory's strategy and namespace config
 print("\n--- Step 2: get memory configuration ---")
 if memory_id:
