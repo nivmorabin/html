@@ -66,21 +66,21 @@ if memory_id:
         strategies = detail.get("strategies", [])
         print(f"  Strategies:    {len(strategies)}")
         for s in strategies:
-            for stype, scfg in s.items():
-                if isinstance(scfg, dict):
-                    ns_list = scfg.get("namespaces", [])
-                    print(f"\n  Strategy: {stype}")
-                    print(f"    Name:       {scfg.get('name', '?')}")
-                    print(f"    Namespaces: {ns_list}")
-                    for ns in ns_list:
-                        has_actor = "{actorId}" in ns
-                        if has_actor:
-                            print(f"      {ns}  =>  ISOLATED (per-user)")
-                        else:
-                            print(f"      {ns}  =>  SHARED (no {{actorId}} scoping)")
-                            print(f"      >>> Every user's events extract into this namespace.")
-                            print(f"      >>> Every user's session retrieves from it.")
-                            print(f"      >>> One user's content becomes every user's context.")
+            stype = s.get("type", "?")
+            sname = s.get("name", "?")
+            ns_list = s.get("namespaces", s.get("namespaceTemplates", []))
+            print(f"\n  Strategy:     {stype}")
+            print(f"    Name:       {sname}")
+            print(f"    Namespaces: {ns_list}")
+            for ns in ns_list:
+                has_actor = "{actorId}" in ns
+                if has_actor:
+                    print(f"      {ns}  =>  ISOLATED (per-user)")
+                else:
+                    print(f"      {ns}  =>  SHARED (no {{actorId}} scoping)")
+                    print(f"      >>> Every user's events extract into this namespace.")
+                    print(f"      >>> Every user's session retrieves from it.")
+                    print(f"      >>> One user's content becomes every user's context.")
     except Exception as e:
         print(f"  Error: {e}")
 else:
@@ -92,16 +92,14 @@ if memory_id:
     try:
         bac = boto3.client("bedrock-agentcore", region_name=region)
         for s in strategies:
-            for stype, scfg in s.items():
-                if isinstance(scfg, dict):
-                    for ns in scfg.get("namespaces", []):
-                        recs = bac.list_memory_records(
-                            memoryId=memory_id, namespace=ns, maxResults=10
-                        ).get("memoryRecordSummaries", [])
-                        print(f"  {ns}: {len(recs)} record(s)")
-                        for r in recs:
-                            txt = r.get("content", {}).get("text", "")[:100]
-                            print(f"    - {txt}")
+            for ns in s.get("namespaces", s.get("namespaceTemplates", [])):
+                recs = bac.list_memory_records(
+                    memoryId=memory_id, namespace=ns, maxResults=10
+                ).get("memoryRecordSummaries", [])
+                print(f"  {ns}: {len(recs)} record(s)")
+                for r in recs:
+                    txt = r.get("content", {}).get("text", "")[:100]
+                    print(f"    - {txt}")
     except Exception as e:
         print(f"  Error: {e}")
 
